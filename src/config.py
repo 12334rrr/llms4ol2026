@@ -26,44 +26,31 @@ if not os.environ.get("HF_ENDPOINT"):
 
 def find_local_model(model_name: str) -> str:
     """
-    在 models/ 目录中搜索已下载的模型文件.
-    支持所有常见目录结构: --local-dir, HF cache, 自定义路径.
+    查找模型。流程:
+    1. 如果是本地存在的路径 → 直接返回
+    2. 在 models/ 目录搜索 (多层递归)
+    3. 都没找到 → 报错退出
     """
+    # ── 1. 先处理各种路径形式 ──
+    for path in [model_name, os.path.abspath(model_name)]:
+        if os.path.isfile(os.path.join(path, "config.json")):
+            print(f"[config] Using: {os.path.abspath(path)}")
+            return os.path.abspath(path)
+
+    # ── 2. 递归搜索 models/ ──
+    if os.path.isdir(MODELS_DIR):
+        for root, dirs, files in os.walk(MODELS_DIR):
+            dirs[:] = [d for d in dirs if d not in ("blobs", "refs", ".locks")]
+            if "config.json" in files:
+                print(f"[config] Found model at: {root}")
+                return root
+
+    # ── 3. 没找到 ──
     model_short = model_name.split("/")[-1]
-
-    # 如果传的就是本地路径，直接返回
-    if os.path.isdir(model_name) and os.path.exists(os.path.join(model_name, "config.json")):
-        print(f"[config] Using direct path: {model_name}")
-        return model_name
-
-    # ── 候选路径列表 ──
-    candidates = [
-        os.path.join(MODELS_DIR, model_short),
-        os.path.join(MODELS_DIR, model_name.replace("/", os.sep)),
-        os.path.join(MODELS_DIR, "hub", model_short),
-        os.path.join(MODELS_DIR, "hub", model_name.replace("/", os.sep)),
-    ]
-
-    # ── 精确检查 ──
-    for c in candidates:
-        if os.path.isdir(c) and os.path.exists(os.path.join(c, "config.json")):
-            print(f"[config] Using local model: {c}")
-            return c
-
-    # ── 宽泛搜索: 遍历 models/ 下所有子目录找 config.json ──
-    for root, dirs, files in os.walk(MODELS_DIR):
-        # 跳过 blobs/ refs/ 等非模型目录
-        dirs[:] = [d for d in dirs if d not in ("blobs", "refs", ".locks")]
-        if "config.json" in files:
-            print(f"[config] Using local model: {root}")
-            return root
-
-    # ── 没找到 ──
-    print(f"[config] Model not found locally: {model_name}")
-    print(f"[config] Searched paths:")
-    for c in candidates:
-        print(f"  {c} {'(exists)' if os.path.isdir(c) else '(missing)'}")
-    return model_name
+    print(f"[config] Model not found: {model_name}")
+    print(f"[config] Place model at: models/{model_short}/config.json")
+    print(f"[config] Or any subfolder of: models/")
+    return model_name  # 返回原名, 让上层报错
 
 
 # ═══════════════════════════════════════════════════════════
