@@ -1,0 +1,12 @@
+{
+    "description": "RTX 3090 24GB — 本地开发机",
+    "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "use_4bit": true,
+    "lora_r": 64,
+    "lora_alpha": 128,
+    "batch_size": 4,
+    "gradient_accumulation": 4,
+    "max_length": 4096,
+    "learning_rate": 2e-4,
+    "num_epochs": 3
+}

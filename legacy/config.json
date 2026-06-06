@@ -1,0 +1,22 @@
+{
+    "_说明": "LLMs4OL 2026 训练配置文件 — 修改 model_name 即可切换模型",
+
+    "model_name": "Qwen/Qwen2.5-3B-Instruct",
+
+    "available_models": {
+        "Qwen/Qwen2.5-7B-Instruct":  "7B 参数，需 ≥8GB 显存 (4-bit)，推荐 RTX 3090/4090",
+        "Qwen/Qwen2.5-3B-Instruct":  "3B 参数，需 ≥4GB 显存 (4-bit)，推荐 RTX 3060/4060",
+        "Qwen/Qwen2.5-1.5B-Instruct": "1.5B 参数，需 ≥3GB 显存 (4-bit)，最低配方案"
+    },
+
+    "epochs": 3,
+    "batch_size": 1,
+    "gradient_accumulation": 16,
+    "learning_rate": 0.0002,
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "max_length": 2048,
+    "use_4bit": true,
+    "output_dir": "./output/ontology_qwen_lora",
+    "seed": 42
+}

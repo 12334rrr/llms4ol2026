@@ -1,0 +1,103 @@
+# ═══════════════════════════════════════════════════════════
+# LLMs4OL 2026 — Docker Compose 编排
+# ═══════════════════════════════════════════════════════════
+#
+# 启动训练:        docker-compose up train
+# 启动推理:        docker-compose up predict
+# 查看 GPU:        docker-compose run --rm gpu-check
+# 进入容器调试:    docker-compose run --rm shell
+# ═══════════════════════════════════════════════════════════
+
+version: "3.8"
+
+services:
+  # ═══════════ 训练 ═══════════
+  train:
+    build: .
+    image: llms4ol:latest
+    container_name: llms4ol_train
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_ENDPOINT=https://hf-mirror.com
+    volumes:
+      - ./data:/app/data              # 训练数据
+      - ./models:/app/models          # 模型缓存 (持久化)
+      - ./output:/app/output          # 训练结果
+    command: >
+      scripts/train.py --gpu auto --epochs 3 --batch_size 4
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ═══════════ 推理 ═══════════
+  predict:
+    build: .
+    image: llms4ol:latest
+    container_name: llms4ol_predict
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_ENDPOINT=https://hf-mirror.com
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./output:/app/output
+    command: >
+      scripts/predict.py
+      --model_path /app/output/ontology_lora/final_model
+      --test_path /app/data/test_task_a_input.json
+      --output /app/output/submission.json
+      --num_sc 3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ═══════════ GPU 诊断 ═══════════
+  gpu-check:
+    build: .
+    image: llms4ol:latest
+    container_name: llms4ol_gpu_check
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    command: scripts/check_gpu.py
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ═══════════ 交互调试 ═══════════
+  shell:
+    build: .
+    image: llms4ol:latest
+    container_name: llms4ol_shell
+    runtime: nvidia
+    stdin_open: true
+    tty: true
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_ENDPOINT=https://hf-mirror.com
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./output:/app/output
+    command: /bin/bash
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

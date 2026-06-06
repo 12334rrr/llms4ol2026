@@ -1,0 +1,12 @@
+{
+    "description": "T4 16GB — 显存有限，用小batch+高累积",
+    "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "use_4bit": true,
+    "lora_r": 32,
+    "lora_alpha": 64,
+    "batch_size": 1,
+    "gradient_accumulation": 16,
+    "max_length": 3072,
+    "learning_rate": 2e-4,
+    "num_epochs": 3
+}

@@ -1,0 +1,28 @@
+# 模型文件 (用 volume 挂载)
+models/
+
+# 训练输出 (用 volume 挂载)
+output/
+
+# 提交文件
+submission*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 数据 (用 volume 挂载)
+# data/   ← 如果需要也可以取消注释
