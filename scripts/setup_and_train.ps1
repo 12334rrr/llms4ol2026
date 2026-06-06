@@ -38,7 +38,7 @@ function Write-Error-Exit($msg) { Write-Host "[ERROR] $msg" -ForegroundColor Red
 # STEP 1-3: 创建环境 + 安装依赖
 # ═══════════════════════════════════════════════════════════
 if (-not $SkipInstall) {
-    Write-Step "STEP 1: Creating conda environment: $ENV_NAME"
+    Write-Step "STEP 1: Setting up conda environment: $ENV_NAME"
 
     $condaExists = Get-Command conda -ErrorAction SilentlyContinue
     if (-not $condaExists) {
@@ -47,20 +47,41 @@ if (-not $SkipInstall) {
 
     $existingEnv = conda env list | Select-String "^${ENV_NAME} "
     if ($existingEnv) {
-        Write-Warn "Environment '$ENV_NAME' exists, removing..."
-        conda env remove -n $ENV_NAME -y
+        Write-Info "Environment '$ENV_NAME' already exists, reusing..."
+    } else {
+        Write-Info "Creating conda env with Python 3.10..."
+        conda create -n $ENV_NAME python=3.10 -y
     }
 
-    Write-Info "Creating conda env with Python 3.10..."
-    conda create -n $ENV_NAME python=3.10 -y
-
     Write-Step "STEP 2: Installing PyTorch with CUDA"
-
-    conda run -n $ENV_NAME pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    Write-Info "Trying domestic mirror: mirrors.aliyun.com ..."
+    $installed = $false
+    $mirrors = @(
+        "https://mirrors.aliyun.com/pytorch-wheels/cu124/",
+        "https://mirror.sjtu.edu.cn/pytorch-wheels/cu124/",
+        "https://download.pytorch.org/whl/cu124"
+    )
+    foreach ($m in $mirrors) {
+        Write-Info "Trying: $m"
+        try {
+            conda run -n $ENV_NAME pip install torch torchvision torchaudio --index-url $m --timeout 120
+            Write-Info "PyTorch installed from $m"
+            $installed = $true
+            break
+        } catch {
+            Write-Warn "Failed, trying next..."
+        }
+    }
+    if (-not $installed) {
+        Write-Warn "All mirrors failed, trying conda..."
+        conda run -n $ENV_NAME conda install pytorch pytorch-cuda=12.4 torchvision torchaudio -c pytorch -c nvidia -y
+    }
 
     Write-Step "STEP 3: Installing project dependencies"
-    conda run -n $ENV_NAME pip install -r requirements.txt
-    conda run -n $ENV_NAME pip install accelerate
+    $pipMirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
+    Write-Info "Using pip mirror: $pipMirror"
+    conda run -n $ENV_NAME pip install -i $pipMirror --trusted-host pypi.tuna.tsinghua.edu.cn -r requirements.txt
+    conda run -n $ENV_NAME pip install -i $pipMirror --trusted-host pypi.tuna.tsinghua.edu.cn accelerate
 
     Write-Info "Verifying CUDA..."
     conda run -n $ENV_NAME python -c @"

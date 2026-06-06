@@ -68,21 +68,20 @@ cd "$PROJECT_DIR"
 # STEP 1: 创建 conda 环境 + 安装依赖
 # ═══════════════════════════════════════════════════════════
 if [ "$SKIP_INSTALL" = false ]; then
-    step "STEP 1: Creating conda environment: $ENV_NAME"
+    step "STEP 1: Setting up conda environment: $ENV_NAME"
 
     # 检查 conda
     if ! command -v conda &> /dev/null; then
         error "conda not found! Please install Miniconda first:\n  https://docs.conda.io/en/latest/miniconda.html"
     fi
 
-    # 创建环境 (如果已存在则重建)
+    # 环境不存在则创建，存在则直接使用
     if conda env list | grep -q "^${ENV_NAME} "; then
-        warn "Environment '$ENV_NAME' exists, removing..."
-        conda env remove -n "$ENV_NAME" -y
+        info "Environment '$ENV_NAME' already exists, reusing..."
+    else
+        info "Creating conda env with Python $PYTHON_VER..."
+        conda create -n "$ENV_NAME" python="$PYTHON_VER" -y
     fi
-
-    info "Creating conda env with Python $PYTHON_VER..."
-    conda create -n "$ENV_NAME" python="$PYTHON_VER" -y
 
     # 获取 conda 环境的 pip 路径
     CONDA_PIP="$(conda run -n "$ENV_NAME" which pip)"
@@ -91,34 +90,94 @@ if [ "$SKIP_INSTALL" = false ]; then
     # ── 安装 PyTorch (CUDA 版) ──
     step "STEP 2: Installing PyTorch with CUDA"
 
-    # 检测 CUDA 版本
-    CUDA_VER=""
+    # ── 检测 GPU Driver 版本 (不是 CUDA toolkit 版本!) ──
+    DRIVER_VER=""
+    CUDA_MAX=""
     if command -v nvidia-smi &> /dev/null; then
-        CUDA_VER=$(nvidia-smi | grep "CUDA Version" | awk '{print $9}' | cut -d'.' -f1,2 | tr -d '.')
-        info "Detected CUDA version from nvidia-smi: $CUDA_VER"
+        DRIVER_VER=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1 | cut -d'.' -f1)
+        CUDA_MAX=$(nvidia-smi | grep "CUDA Version" | awk '{print $9}' | cut -d'.' -f1,2 | tr -d '.')
+        info "NVIDIA Driver: $DRIVER_VER, Max CUDA: $CUDA_MAX"
     fi
 
-    if [ -z "$CUDA_VER" ]; then
-        CUDA_VER="121"  # 默认 CUDA 12.1
-        warn "Cannot detect CUDA version, using default: 12.1"
+    # ── 选择合适的 PyTorch CUDA 版本 ──
+    # 关键: PyTorch 的 CUDA 版本不能超过 Driver 支持的最大版本
+    # Driver >= 545 → cu124, Driver >= 525 → cu121, 否则 cu118
+    if [ -n "$DRIVER_VER" ] && [ "$DRIVER_VER" -ge 545 ] 2>/dev/null; then
+        CUDA_TAG="cu124"
+    elif [ -n "$DRIVER_VER" ] && [ "$DRIVER_VER" -ge 525 ] 2>/dev/null; then
+        CUDA_TAG="cu121"
+    else
+        CUDA_TAG="cu118"
+        info "Driver too old, using PyTorch CUDA 11.8 (driver-compatible)"
     fi
+    info "PyTorch CUDA tag: $CUDA_TAG"
 
-    # 根据 CUDA 版本选择 PyTorch 索引
-    case "$CUDA_VER" in
-        124|125) TORCH_INDEX="https://download.pytorch.org/whl/cu124" ;;
-        121|122) TORCH_INDEX="https://download.pytorch.org/whl/cu121" ;;
-        118)     TORCH_INDEX="https://download.pytorch.org/whl/cu118" ;;
-        *)       TORCH_INDEX="https://download.pytorch.org/whl/cu121" ;;
+    # ── PyTorch 国内安装策略 ──
+    # 方案1: conda + 清华镜像 (最稳)
+    # 方案2: pip + 上交镜像
+    # 方案3: pip + 官方源 (慢但一定能用)
+    # 方案4: conda + 官方源
+
+    info "Installing PyTorch $CUDA_TAG via conda (Tsinghua mirror)..."
+    echo ""
+
+    # conda CUDA 版本映射
+    case "$CUDA_TAG" in
+        cu124) CONDA_CUDA="12.4" ;;
+        cu121) CONDA_CUDA="12.1" ;;
+        cu118) CONDA_CUDA="11.8" ;;
     esac
 
-    info "Installing PyTorch from: $TORCH_INDEX"
-    conda run -n "$ENV_NAME" pip install torch torchvision torchaudio --index-url "$TORCH_INDEX"
+    # 尝试 conda + 清华源
+    conda run -n "$ENV_NAME" conda install pytorch \
+        "pytorch-cuda=$CONDA_CUDA" torchvision torchaudio \
+        -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/ \
+        -c nvidia -y 2>&1 | tail -3
+    CONDA_EXIT=${PIPESTATUS[0]}
 
-    # ── 安装项目依赖 ──
+    # 验证是否安装成功
+    conda run -n "$ENV_NAME" python -c "import torch; print('torch', torch.__version__)" 2>/dev/null
+    PYTORCH_OK=$?
+
+    if [ "$PYTORCH_OK" != "0" ]; then
+        warn "conda mirror failed, trying pip + SJTU mirror..."
+        conda run -n "$ENV_NAME" pip install torch torchvision torchaudio \
+            --index-url "https://mirror.sjtu.edu.cn/pytorch-wheels/$CUDA_TAG/" \
+            --timeout 300 2>&1 | tail -3
+        PYTORCH_OK=$?
+    fi
+
+    if [ "$PYTORCH_OK" != "0" ]; then
+        warn "SJTU mirror failed, trying official PyTorch index (slower)..."
+        conda run -n "$ENV_NAME" pip install torch torchvision torchaudio \
+            --index-url "https://download.pytorch.org/whl/$CUDA_TAG" \
+            --timeout 600 2>&1 | tail -3
+        PYTORCH_OK=$?
+    fi
+
+    if [ "$PYTORCH_OK" != "0" ]; then
+        warn "pip failed, trying conda official..."
+        conda run -n "$ENV_NAME" conda install pytorch \
+            "pytorch-cuda=$CONDA_CUDA" torchvision torchaudio \
+            -c pytorch -c nvidia -y 2>&1 | tail -3
+        PYTORCH_OK=$?
+    fi
+
+    # 最终验证
+    if ! conda run -n "$ENV_NAME" python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
+        error "PyTorch CUDA installation FAILED!\n  Try manually:\n  conda activate $ENV_NAME\n  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/$CUDA_TAG"
+    fi
+
+    info "PyTorch CUDA: OK"
+
+    # ── pip 配置国内源 ──
     step "STEP 3: Installing project dependencies"
 
-    conda run -n "$ENV_NAME" pip install -r requirements.txt
-    conda run -n "$ENV_NAME" pip install accelerate
+    PIP_MIRROR="https://pypi.tuna.tsinghua.edu.cn/simple"
+    info "Using pip mirror: $PIP_MIRROR"
+
+    conda run -n "$ENV_NAME" pip install -i "$PIP_MIRROR" --trusted-host pypi.tuna.tsinghua.edu.cn -r requirements.txt
+    conda run -n "$ENV_NAME" pip install -i "$PIP_MIRROR" --trusted-host pypi.tuna.tsinghua.edu.cn accelerate
 
     # 验证 CUDA
     info "Verifying CUDA..."

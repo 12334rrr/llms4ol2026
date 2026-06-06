@@ -17,19 +17,30 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 
-from src import SYSTEM_PROMPT, postprocess_triples
+from src import SYSTEM_PROMPT, postprocess_triples, find_local_model
 
 MAX_NEW_TOKENS = 768
+DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 
 
-def load_model(model_path=None, use_lora=True):
-    print("Loading Qwen/Qwen2.5-7B-Instruct ...")
+def load_model(model_path=None, use_lora=True, base_model=None):
+    """加载 4-bit 模型 + LoRA adapter. 自动查找本地模型."""
+    base = base_model or DEFAULT_MODEL
+    base_path = find_local_model(base)
+    is_local = os.path.isdir(base_path)
+
+    print(f"Loading base model: {base_path}")
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16,
                              bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True,
                              llm_int8_enable_fp32_cpu_offload=True)
-    model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-7B-Instruct", quantization_config=bnb,
-                                                  device_map="auto", trust_remote_code=True, torch_dtype=torch.float16)
-    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-7B-Instruct", trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        base_path, quantization_config=bnb,
+        device_map="auto", trust_remote_code=True,
+        torch_dtype=torch.float16, local_files_only=is_local,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        base_path, trust_remote_code=True, local_files_only=is_local,
+    )
     if use_lora and model_path and os.path.isdir(model_path):
         if os.path.exists(os.path.join(model_path, "adapter_config.json")):
             print(f"Loading LoRA: {model_path}")
@@ -89,9 +100,11 @@ def main():
     parser.add_argument("--output", type=str, default="submission.json")
     parser.add_argument("--num_sc", type=int, default=1)
     parser.add_argument("--no_lora", action="store_true")
+    parser.add_argument("--base_model", type=str, default=None,
+                       help="Base model (default: Qwen/Qwen2.5-7B-Instruct, auto-finds local)")
     args = parser.parse_args()
 
-    model, tokenizer = load_model(args.model_path, not args.no_lora)
+    model, tokenizer = load_model(args.model_path, not args.no_lora, args.base_model)
     with open(args.test_path, 'r', encoding='utf-8') as f:
         test_data = json.load(f)
     print(f"Test samples: {len(test_data)}")

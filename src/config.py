@@ -19,8 +19,55 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 os.environ["HF_HOME"] = MODELS_DIR
 os.environ["HF_HUB_CACHE"] = os.path.join(MODELS_DIR, "hub")
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["HF_HUB_OFFLINE"] = "0"  # 默认在线，离线时手动改
 if not os.environ.get("HF_ENDPOINT"):
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
+
+def find_local_model(model_name: str) -> str:
+    """
+    查找本地是否已下载模型。按优先级搜索:
+    1. models/Qwen2.5-7B-Instruct/          ← huggingface-cli --local-dir
+    2. models/Qwen/Qwen2.5-7B-Instruct/     ← 按 org/model 结构
+    3. models/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/...  ← HF cache
+    """
+    model_short = model_name.split("/")[-1]  # Qwen2.5-7B-Instruct
+
+    # ── 候选路径列表 ──
+    candidates = [
+        os.path.join(MODELS_DIR, model_short),                        # models/Qwen2.5-7B-Instruct
+        os.path.join(MODELS_DIR, model_name.replace("/", os.sep)),    # models/Qwen/Qwen2.5-7B-Instruct
+    ]
+
+    # ── 检查直接路径 ──
+    for c in candidates:
+        if os.path.isdir(c) and os.path.exists(os.path.join(c, "config.json")):
+            print(f"[config] Using local model: {c}")
+            return c
+        # 检查是否只有单个子目录（--local-dir 有时会多一层）
+        if os.path.isdir(c):
+            subdirs = [d for d in os.listdir(c) if os.path.isdir(os.path.join(c, d))]
+            for sd in subdirs:
+                sd_path = os.path.join(c, sd)
+                if os.path.exists(os.path.join(sd_path, "config.json")):
+                    print(f"[config] Using local model: {sd_path}")
+                    return sd_path
+
+    # ── 检查 HF hub cache ──
+    hub_cache = os.path.join(MODELS_DIR, "hub", "models--" + model_name.replace("/", "--"))
+    snapshots_dir = os.path.join(hub_cache, "snapshots")
+    if os.path.isdir(snapshots_dir):
+        for d in sorted(os.listdir(snapshots_dir), reverse=True):  # 最新 first
+            snap = os.path.join(snapshots_dir, d)
+            if os.path.exists(os.path.join(snap, "config.json")):
+                print(f"[config] Using hub cache: {snap}")
+                return snap
+
+    # ── 没找到 ──
+    print(f"[config] Model not found locally: {model_name}")
+    print(f"[config] Searched: {', '.join(candidates)}")
+    print(f"[config] Will attempt download from HuggingFace...")
+    return model_name
 
 
 # ═══════════════════════════════════════════════════════════
