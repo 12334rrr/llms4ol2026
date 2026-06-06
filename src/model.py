@@ -14,52 +14,30 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, Ta
 from .config import Config, find_local_model
 
 
-def _check_network() -> bool:
-    """快速检测是否能连到 HuggingFace (优先国内镜像)."""
-    import socket
-    # 先试镜像，再试官方
-    for host in ["hf-mirror.com", "huggingface.co"]:
-        try:
-            socket.create_connection((host, 443), timeout=3)
-            return True
-        except:
-            continue
-    return False
-
-
 def _model_not_found_error(model_name: str, searched: list):
-    """本地模型未找到时的处理."""
+    """本地模型未找到时直接报错，提示手动下载."""
     model_short = model_name.split("/")[-1]
-    has_net = _check_network()
 
     print("")
     print("=" * 60)
-    if has_net:
-        print("  📥 Model not local — downloading from mirror...")
-    else:
-        print("  ❌ MODEL NOT FOUND & SERVER OFFLINE")
+    print("  ❌ MODEL NOT FOUND")
     print("=" * 60)
     print(f"  Model: {model_name}")
     print(f"  Local path: models/{model_short}/")
     print("")
-
-    if has_net:
-        print("  Server has internet (mirror reachable), auto-downloading...")
-        print(f"  Mirror: {os.environ.get('HF_ENDPOINT', 'huggingface.co')}")
-        print("=" * 60)
-        return  # 不抛异常，继续在线下载
-    else:
-        print("  ── On a machine WITH internet ──")
-        print(f"    pip install huggingface_hub")
-        print(f"    huggingface-cli download {model_name} --local-dir ./models/{model_short}")
-        print("")
-        print(f"  ── Then scp to this server ──")
-        print(f"    scp -r models/{model_short} user@server:~/llms4ol2026/models/")
-        print("=" * 60)
-        raise RuntimeError(
-            f"Model '{model_name}' not found locally and server is OFFLINE.\n"
-            f"Download on a machine with internet and copy to models/{model_short}/"
-        )
+    print("  ── On a machine WITH internet (your local PC) ──")
+    print(f"    huggingface-cli download {model_name} --local-dir ./models/{model_short}")
+    print("")
+    print(f"  ── Then SCP to this server ──")
+    print(f"    scp -r models/{model_short} user@server:$(pwd)/models/")
+    print("")
+    print(f"  ── Then run ──")
+    print(f"    python scripts/train.py --gpu auto")
+    print("=" * 60)
+    raise RuntimeError(
+        f"Model '{model_name}' not found.\n"
+        f"Download on a machine with internet and SCP to this server."
+    )
 
 
 def setup_model_and_tokenizer(config: Config):
