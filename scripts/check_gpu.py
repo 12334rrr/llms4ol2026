@@ -52,7 +52,7 @@ def pytorch_gpu():
             print(f"  cuDNN       : {torch.backends.cudnn.version()}")
             for i in range(torch.cuda.device_count()):
                 p = torch.cuda.get_device_properties(i)
-                mem = p.total_mem / 1024**3
+                mem = p.total_memory / 1024**3
                 print(f"  GPU {i}       : {p.name} ({mem:.1f} GB)")
                 print(f"    Compute   : sm_{p.major}{p.minor}")
                 print(f"    SMs       : {p.multi_processor_count}")
@@ -76,7 +76,7 @@ def model_recommend():
             return
 
         name = torch.cuda.get_device_name(0)
-        mem = torch.cuda.get_device_properties(0).total_mem / 1024**3
+        mem = torch.cuda.get_device_properties(0).total_memory / 1024**3
         count = torch.cuda.device_count()
         name_l = name.lower()
 
