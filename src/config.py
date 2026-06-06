@@ -34,7 +34,8 @@ def find_local_model(model_name: str) -> str:
     # ── 1. 先处理各种路径形式 ──
     for path in [model_name, os.path.abspath(model_name)]:
         if os.path.isfile(os.path.join(path, "config.json")):
-            print(f"[config] Using: {os.path.abspath(path)}")
+            import sys
+            print(f"[config] Using: {os.path.abspath(path)}", file=sys.stderr)
             return os.path.abspath(path)
 
     # ── 2. 递归搜索 models/ ──
@@ -42,15 +43,16 @@ def find_local_model(model_name: str) -> str:
         for root, dirs, files in os.walk(MODELS_DIR):
             dirs[:] = [d for d in dirs if d not in ("blobs", "refs", ".locks")]
             if "config.json" in files:
-                print(f"[config] Found model at: {root}")
+                import sys
+                print(f"[config] Found model at: {root}", file=sys.stderr)
                 return root
 
     # ── 3. 没找到 ──
     model_short = model_name.split("/")[-1]
-    print(f"[config] Model not found: {model_name}")
-    print(f"[config] Place model at: models/{model_short}/config.json")
-    print(f"[config] Or any subfolder of: models/")
-    return model_name  # 返回原名, 让上层报错
+    import sys
+    print(f"[config] Model not found: {model_name}", file=sys.stderr)
+    print(f"[config] Place model at: models/{model_short}/config.json", file=sys.stderr)
+    return model_name
 
 
 # ═══════════════════════════════════════════════════════════
