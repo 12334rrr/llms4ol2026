@@ -105,7 +105,7 @@ def main():
         weight_decay=config.WEIGHT_DECAY, max_grad_norm=config.MAX_GRAD_NORM,
         logging_steps=config.LOGGING_STEPS, save_steps=config.SAVE_STEPS,
         eval_steps=config.EVAL_STEPS,
-        evaluation_strategy="steps", save_strategy="steps",
+        eval_strategy="steps", save_strategy="steps",
         load_best_model_at_end=True, metric_for_best_model="eval_loss",
         greater_is_better=False, fp16=config.FP16,
         gradient_checkpointing=config.GRADIENT_CHECKPOINTING,
